@@ -1,0 +1,5 @@
+x (A) Add a usable trimming feature.
+(A) Add the compress feature.
+(A) Add the togif feature.
+(B) Add a working click CLI app that responds to flag autosuggestions.
+(B) Make commands stack-able.
