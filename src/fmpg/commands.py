@@ -9,12 +9,11 @@ Command = namedtuple('Command', ['cmd', 'output'])
 
 
 @click.command()
-@click.argument("filename", type=click.Path(exists=True, dir_okay=False))
-@decorators.add_generic_options("start", "to", "duration", "output", "vcodec", "acodec")
+@decorators.add_generic_options("input", "start", "to", "duration", "output", "vcodec", "acodec")
 @click.option("--fast", is_flag=True, help="Use stream copy instead of re-encoding.")
 @decorators.exception_handler
 @decorators.with_dry_run_option
-def trim(filename, start, to, duration, output, vcodec, acodec, fast) -> Command:
+def trim(input, start, to, duration, output, vcodec, acodec, fast) -> Command:
     if (to is None) == (duration is None):
         raise click.UsageError("Provide exactly one of --to or --duration.")
     if fast and (vcodec or acodec):
@@ -23,17 +22,17 @@ def trim(filename, start, to, duration, output, vcodec, acodec, fast) -> Command
     # Bases
     cmd = ["ffmpeg", "-ss", start]
     cmd += ["-to", to] if to else ["-t", duration]
-    cmd += ["-i", filename]
+    cmd += ["-i", input]
 
     # Output options
     if fast:
         cmd += ["-c", "copy"]
     else:
-        cmd += utils.vcodec_args(filename, vcodec)
-        cmd += utils.acodec_args(filename, acodec)
+        cmd += utils.vcodec_args(input, vcodec)
+        cmd += utils.acodec_args(input, acodec)
 
     if output is None:
-        p = Path(filename)
+        p = Path(input)
         output = str(p.with_name(f"{p.stem}.trimmed{p.suffix}"))
 
     cmd.append(output)

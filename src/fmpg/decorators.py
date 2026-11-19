@@ -47,17 +47,21 @@ GENERIC_OPTIONS = {
         ("-d", "--duration"),
         {"help": "Set duration of the output."}
     ),
+    "input": (
+        ("-i", "--input"),
+        {"required": True, "type": click.Path(), "help": "Input file."},
+    ),
     "output": (
         ("-o", "--output"),
         {"type": click.Path(), "help": "Output file."},
     ),
     "vcodec": (
         ("--vcodec",),
-        {"help": "Video encoder, e.g. libx264. Default: match the input's codec."},
+        {"help": "Video encoder, e.g. libx264. Default is the input's codec."},
     ),
     "acodec": (
         ("--acodec",),
-        {"help": "Audio encoder, e.g. aac. Default: match the input's codec."},
+        {"help": "Audio encoder, e.g. aac. Default is the input's codec."},
     ),
 }
 
