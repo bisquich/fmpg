@@ -1,4 +1,7 @@
 import subprocess
+from pathlib import Path
+
+import click
 
 # Reference: https://ffmpeg.org/ffmpeg-codecs.html
 VIDEO_ENCODERS = {
@@ -53,6 +56,13 @@ CRF = {
     "libx265": "23",  # x264's 18 shifted by the +5 gap between the defaults (23 -> 28).
 }
 
+ABITRATE = {
+    "aac": "192k",
+    "libmp3lame": "192k",
+    "libopus": "128k",
+    "libvorbis": "192k",
+}
+
 
 def to_seconds(timer: str) -> str:
     parts = timer.split(":")
@@ -65,14 +75,14 @@ def to_seconds(timer: str) -> str:
     return str(total)
 
 
-def source_video_codec(filename: str) -> str:
-    codec = subprocess.run(
+def source_codec(filename: str, stream: str) -> str:
+    result = subprocess.run(
         [
             "ffprobe",
             "-v",
             "error",
             "-select_streams",
-            "v:0",
+            stream,
             "-show_entries",
             "stream=codec_name",
             "-of",
@@ -83,32 +93,19 @@ def source_video_codec(filename: str) -> str:
         text=True,
         check=True,
     )
-    return codec.stdout.strip()
+    return result.stdout.strip()
+
+
+def source_video_codec(filename: str) -> str:
+    return source_codec(filename, "v:0")
+
+
+def source_audio_codec(filename: str) -> str:
+    return source_codec(filename, "a:0")
 
 
 def get_video_encoder(video_codec: str) -> str:
     return VIDEO_ENCODERS.get(video_codec, "libx264")
-
-
-def source_audio_codec(filename: str) -> str:
-    codec = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "a:0",
-            "-show_entries",
-            "stream=codec_name",
-            "-of",
-            "csv=p=0",
-            filename,
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return codec.stdout.strip()
 
 
 def get_audio_encoder(audio_codec: str) -> str:
@@ -125,5 +122,46 @@ def vcodec_args(filename, vcodec) -> list:
     return arg
 
 
-def acodec_args(acodec: str | None = None) -> list[str]:
-    return ["-c:a", acodec or "copy"]
+def acodec_args(filename: str, acodec: str | None = None) -> list[str]:
+    if acodec == "copy":
+        return ["-c:a", "copy"]
+
+    if acodec:
+        encoder = AUDIO_ENCODERS.get(acodec, acodec)
+    else:
+        source = source_audio_codec(filename)
+        if not source:
+            return []  # No audio stream
+        encoder = get_audio_encoder(source)
+
+    args = ["-c:a", encoder]
+    if encoder in ABITRATE:
+        args += ["-b:a", ABITRATE[encoder]]
+    return args
+
+
+def ctime_ns(path: Path):
+    """Returns the file in path's creation time in nanoseconds."""
+    try:
+        return path.stat().st_ctime_ns
+    except FileNotFoundError:
+        return None
+
+
+def run_cmd(cmd, output: Path):
+    out = Path(output)
+    before = ctime_ns(out)
+
+    subprocess.run(cmd, check=True)
+
+    # Check if the file is actually created before returning
+    # the output file name
+    after = ctime_ns(out)
+    if after is None or (before is not None and after <= before):
+        raise click.ClickException(
+            f"ffmpeg exited cleanly but {output} wasn't written."
+        )
+    if out.stat().st_size == 0:
+        raise click.ClickException(f"{output} is empty.")
+
+    click.echo(output)
