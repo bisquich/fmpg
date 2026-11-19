@@ -65,6 +65,8 @@ ABITRATE = {
 
 
 def to_seconds(timer: str) -> str:
+    """Convert a string of hh:mm:ss,
+    mm:ss, or just ss into seconds"""
     parts = timer.split(":")
     if len(parts) > 3:
         raise ValueError(f"too many parts ({len(parts)}), max is hh:mm:ss: {timer!r}")
@@ -76,6 +78,7 @@ def to_seconds(timer: str) -> str:
 
 
 def source_codec(filename: str, stream: str) -> str:
+    """Run ffprobe to get a video or audio codec."""
     result = subprocess.run(
         [
             "ffprobe",
@@ -97,22 +100,31 @@ def source_codec(filename: str, stream: str) -> str:
 
 
 def source_video_codec(filename: str) -> str:
+    """Run ffprobe to get a video codec with default of v:0."""
     return source_codec(filename, "v:0")
 
 
 def source_audio_codec(filename: str) -> str:
+    """Run ffprobe to get a video codec with default of a:0."""
     return source_codec(filename, "a:0")
 
 
 def get_video_encoder(video_codec: str) -> str:
+    """Get video encoder of a video codec. Default is libx264."""
     return VIDEO_ENCODERS.get(video_codec, "libx264")
 
 
 def get_audio_encoder(audio_codec: str) -> str:
+    """Get audio encoder of a audio codec. Default is aac."""
     return AUDIO_ENCODERS.get(audio_codec, "aac")
 
 
 def vcodec_args(filename, vcodec) -> list:
+    """Build ffmpeg video codec arguments.
+
+    Use vcodec if given, otherwise pick an encoder that matches the
+    source video codec of the file. Encoders listed in CRF also get
+    preset "fast" and their CRF value."""
     video_encoder = vcodec or get_video_encoder(source_video_codec(filename))
     arg = ["-c:v", video_encoder]
 
@@ -123,6 +135,15 @@ def vcodec_args(filename, vcodec) -> list:
 
 
 def acodec_args(filename: str, acodec: str | None = None) -> list[str]:
+    """Build ffmpeg audio codec arguments.
+
+    Stream-copy if acodec is "copy". Otherwise map acodec through
+    AUDIO_ENCODERS (or use it as-is), or pick an encoder that matches the
+    source audio codec of the file. Encoders listed in ABITRATE also get
+    their bitrate.
+
+    Return an empty list if acodec is not given and the source has no
+    audio stream."""
     if acodec == "copy":
         return ["-c:a", "copy"]
 
@@ -141,27 +162,31 @@ def acodec_args(filename: str, acodec: str | None = None) -> list[str]:
 
 
 def ctime_ns(path: Path):
-    """Returns the file in path's creation time in nanoseconds."""
+    """Return a file's creation time in nanoseconds."""
     try:
         return path.stat().st_ctime_ns
     except FileNotFoundError:
         return None
 
 
-def run_cmd(cmd, output: Path):
-    out = Path(output)
-    before = ctime_ns(out)
+def run_cmd(cmd: list[str], output: Path) -> Path:
+    """Run cmd and check that output was written.
 
-    subprocess.run(cmd, check=True)
+    Return output. Raise ClickException if the command fails or the
+    file is missing or empty.
+    """
+    output = Path(output)
+    before = ctime_ns(output)
 
-    # Check if the file is actually created before returning
-    # the output file name
-    after = ctime_ns(out)
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        raise click.ClickException(f"{e.cmd[0]} failed with exit code {e.returncode}") from e
+
+    after = ctime_ns(output)
     if after is None or (before is not None and after <= before):
-        raise click.ClickException(
-            f"ffmpeg exited cleanly but {output} wasn't written."
-        )
-    if out.stat().st_size == 0:
+        raise click.ClickException(f"{cmd[0]} exited cleanly but {output} wasn't written.")
+    if output.stat().st_size == 0:
         raise click.ClickException(f"{output} is empty.")
 
-    click.echo(output)
+    return output

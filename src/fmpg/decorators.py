@@ -1,26 +1,14 @@
 import functools
 import shlex
-import subprocess
 
 import click
 
 from fmpg import utils
 
 
-def exception_handler(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        try:
-            return f(*args, **kwargs)
-        except subprocess.CalledProcessError as e:
-            raise click.ClickException(
-                f"{e.cmd[0]} failed with exit code {e.returncode}"
-            )
+def ffmpeg_command(f):
+    """Add --dry-run and run the (cmd, output) pair that f returns."""
 
-    return wrapper
-
-
-def with_dry_run_option(f):
     @click.option(
         "--dry-run", is_flag=True, help="Print the command instead of running it."
     )
@@ -30,23 +18,15 @@ def with_dry_run_option(f):
         if dry_run:
             click.echo(shlex.join(cmd))
         else:
-            utils.run_cmd(cmd, output)
+            click.echo(utils.run_cmd(cmd, output))
 
     return wrapper
 
+
 GENERIC_OPTIONS = {
-    "start": (
-        ("start", "--from", "-f"),
-        {"required": True, "help": "Start time."}
-    ),
-    "to": (
-        ("--to", "-t"),
-        {"help": "End time."}
-    ),
-    "duration": (
-        ("-d", "--duration"),
-        {"help": "Set duration of the output."}
-    ),
+    "start": (("start", "--from", "-f"), {"required": True, "help": "Start time: SS, MM:SS, or HH:MM:SS."}),
+    "to": (("--to", "-t"), {"help": "End time: SS, MM:SS, or HH:MM:SS."}),
+    "duration": (("-d", "--duration"), {"help": "Output duration: SS, MM:SS, or HH:MM:SS."}),
     "input": (
         ("-i", "--input"),
         {"required": True, "type": click.Path(), "help": "Input file."},
@@ -67,6 +47,8 @@ GENERIC_OPTIONS = {
 
 
 def add_generic_options(*names):
+    """Example usage as a decorator:
+    ```@add_generic_operations("input", "start", "to", "duration", "output")"""
     def wrapper(f):
         # reversed to keep --help in the correct order
         for name in reversed(names):
