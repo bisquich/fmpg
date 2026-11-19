@@ -1,5 +1,7 @@
-x (A) Add a usable trimming feature.
+x (A) 2026-11-18 Add a usable trimming feature.
+(A) Reinitialize the project as an app.
 (A) Add the compress feature.
 (A) Add the togif feature.
+(A) Put acodec, vcodec, exception_handler, and one_of_two in decorators
 (B) Add a working click CLI app that responds to flag autosuggestions.
 (B) Make commands stack-able.
