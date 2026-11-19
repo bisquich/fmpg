@@ -1,6 +1,7 @@
 x (A) 2026-11-18 Add a usable trimming feature.
 (A) Add the compress feature.
 (A) Add the togif feature.
-(A) Put acodec, vcodec, exception_handler, and one_of_two in decorators
+x (A) Put acodec, vcodec, exception_handler, and one_of_two in decorators
 (B) Add a working click CLI app that responds to flag autosuggestions.
 (B) Make commands stack-able.
+(B) Document the code properly, from help menu along with docstrings.

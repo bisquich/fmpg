@@ -66,7 +66,10 @@ def add_generic_options(*names):
     def wrapper(f):
         # reversed to keep --help in the correct order
         for name in reversed(names):
-            flags, kwargs = GENERIC_OPTIONS[name]
+            option = GENERIC_OPTIONS.get(name)
+            if option is None:
+                raise ValueError(f"Option {name} is not available in GENERIC_OPTIONS")
+            flags, kwargs = option
             f = click.option(*flags, **kwargs)(f)
         return f
 
