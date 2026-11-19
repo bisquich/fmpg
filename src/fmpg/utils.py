@@ -42,6 +42,17 @@ AUDIO_ENCODERS = {
     "pcm_s24le": "pcm_s24le",
 }
 
+# References:
+#   - https://trac.ffmpeg.org/wiki/Encode/H.264  (CRF scale, 17-18 "visually lossless")
+#   - https://trac.ffmpeg.org/wiki/Encode/H.265  (x265 default CRF 28 ~ x264 CRF 23)
+
+# CRF is a quality target: lower means better quality and bigger file.
+# The scale is not shared between encoders, so that's why each one gets its own value.
+CRF = {
+    "libx264": "18",  # 17-18 is "visually lossless or nearly so"
+    "libx265": "23",  # x264's 18 shifted by the +5 gap between the defaults (23 -> 28).
+}
+
 
 def to_seconds(timer: str) -> str:
     parts = timer.split(":")
@@ -78,6 +89,7 @@ def source_video_codec(filename: str) -> str:
 def get_video_encoder(video_codec: str) -> str:
     return VIDEO_ENCODERS.get(video_codec, "libx264")
 
+
 def source_audio_codec(filename: str) -> str:
     codec = subprocess.run(
         [
@@ -98,5 +110,20 @@ def source_audio_codec(filename: str) -> str:
     )
     return codec.stdout.strip()
 
+
 def get_audio_encoder(audio_codec: str) -> str:
     return AUDIO_ENCODERS.get(audio_codec, "aac")
+
+
+def vcodec_args(filename, vcodec) -> list:
+    video_encoder = vcodec or get_video_encoder(source_video_codec(filename))
+    arg = ["-c:v", video_encoder]
+
+    if video_encoder in CRF:
+        arg += ["-preset", "fast", "-crf", CRF[video_encoder]]
+
+    return arg
+
+
+def acodec_args(acodec: str | None = None) -> list[str]:
+    return ["-c:a", acodec or "copy"]

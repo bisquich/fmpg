@@ -32,28 +32,8 @@ def trim(filename, start, to, duration, output, vcodec, acodec, fast):
     if fast:
         cmd += ["-c", "copy"]
     else:
-        video_encoder = vcodec or utils.get_video_encoder(
-            utils.source_video_codec(filename)
-        )
-        cmd += ["-c:v", video_encoder]
-
-        # References:
-        #   - https://trac.ffmpeg.org/wiki/Encode/H.264  (CRF scale, 17-18 "visually lossless")
-        #   - https://trac.ffmpeg.org/wiki/Encode/H.265  (x265 default CRF 28 ~ x264 CRF 23)
-
-        # CRF is a quality target: lower means better quality and bigger file.
-        # The scale is not shared between encoders, so that's why each one gets its own value.
-        CRF = {
-            "libx264": "18",  # 17-18 is "visually lossless or nearly so"
-            "libx265": "23",  # x264's 18 shifted by the +5 gap between the defaults (23 -> 28).
-        }
-
-        if video_encoder in CRF:
-            cmd += ["-preset", "fast", "-crf", CRF[video_encoder]]
-
-        audio_source = utils.source_audio_codec(filename)
-        if acodec or audio_source:
-            cmd += ["-c:a", acodec or utils.get_audio_encoder(audio_source)]
+        cmd += utils.vcodec_args(filename, vcodec)
+        cmd += utils.acodec_args(acodec)
 
     if output is None:
         p = Path(filename)
