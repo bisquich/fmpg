@@ -1,35 +1,23 @@
-import subprocess
 from pathlib import Path
 
 import click
 
-from fmpg import utils
+from fmpg import decorators, utils
 
 
-# TODO: Put acodec, vcodec, exception handler, in decorators
+# TODO: Put acodec, vcodec, exception_handler, and one_of_two in decorators
 @click.command()
 @click.argument("filename", type=click.Path(exists=True, dir_okay=False))
-@click.option("--from", "-f", "start", required=True, help="Start time.")
+@click.option("start", "--from", "-f", required=True, help="Start time.")
 @click.option("--to", "-t", help="End time.")
 @click.option("--duration", "-d", help="Duration.")
 @click.option("--output", "-o", help="Output file name.")
-@click.option(
-    "--vcodec", help="Video encoder, e.g. libx264. Default: match the input's codec."
-)
-@click.option(
-    "--acodec", help="Audio encoder, e.g. aac. Default: match the input's codec."
-)
+@click.option("--vcodec", help="Video encoder, e.g. libx264. Default: match the input's codec.")
+@click.option("--acodec", help="Audio encoder, e.g. aac. Default: match the input's codec.")
 @click.option("--fast", is_flag=True, help="Use stream copy instead of re-encoding.")
-def trim(
-    filename: str,
-    start: str,
-    to: str | None,
-    duration: str | None,
-    output: str | None,
-    vcodec: str | None,
-    acodec: str | None,
-    fast: bool,
-):
+@decorators.exception_handler
+@decorators.with_dry_run
+def trim(filename, start, to, duration, output, vcodec, acodec, fast):
     if (to is None) == (duration is None):
         raise click.UsageError("Provide exactly one of --to or --duration.")
     if fast and (vcodec or acodec):
@@ -73,7 +61,4 @@ def trim(
 
     cmd.append(output)
 
-    try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        raise click.ClickException(f"ffmpeg failed with exit code {e.returncode}")
+    return cmd
