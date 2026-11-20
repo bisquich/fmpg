@@ -64,19 +64,6 @@ ABITRATE = {
 }
 
 
-def to_seconds(timer: str) -> str:
-    """Convert a string of hh:mm:ss,
-    mm:ss, or just ss into seconds"""
-    parts = timer.split(":")
-    if len(parts) > 3:
-        raise ValueError(f"too many parts ({len(parts)}), max is hh:mm:ss: {timer!r}")
-
-    total = 0
-    for part in parts:
-        total = total * 60 + int(part)
-    return str(total)
-
-
 def source_codec(filename: str, stream: str) -> str:
     """Run ffprobe to get a video or audio codec."""
     result = subprocess.run(
