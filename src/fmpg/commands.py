@@ -34,7 +34,8 @@ def trim(input, start, to, duration, output, vcodec, acodec, fast) -> Command:
         raise click.UsageError("--vcodec and --acodec can't be used with --fast.")
 
     # Bases
-    cmd = ["ffmpeg", "-ss", start]
+    cmd = ["ffmpeg"]
+    cmd += ["-ss", start] if start else []
     cmd += ["-to", to] if to else ["-t", duration]
     cmd += ["-i", input]
 
