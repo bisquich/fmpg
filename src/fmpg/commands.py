@@ -10,11 +10,11 @@ Command = namedtuple("Command", ["cmd", "output"])
 
 @click.command()
 @decorators.add_generic_options(
-    "input", "start", "to", "duration", "output", "vcodec", "acodec"
+    "input", "start", "to", "duration", "output", "vcodec", "vquality", "acodec", "aquality"
 )
 @click.option("--fast", is_flag=True, help="Use stream copy instead of re-encoding.")
 @decorators.ffmpeg_command
-def trim(input, start, to, duration, output, vcodec, acodec, fast) -> Command:
+def trim(input, start, to, duration, output, vcodec, vquality, acodec, aquality, fast) -> Command:
     """\b
     Examples:
     # Cut from 4s to 10s
@@ -30,8 +30,8 @@ def trim(input, start, to, duration, output, vcodec, acodec, fast) -> Command:
     """
     if (to is None) == (duration is None):
         raise click.UsageError("Provide exactly one of --to or --duration.")
-    if fast and (vcodec or acodec):
-        raise click.UsageError("--vcodec and --acodec can't be used with --fast.")
+    if fast and (vcodec or vquality or acodec or aquality):
+        raise click.UsageError("Codec and quality options can't be used with --fast.")
 
     # Bases
     cmd = ["ffmpeg"]
@@ -43,8 +43,8 @@ def trim(input, start, to, duration, output, vcodec, acodec, fast) -> Command:
     if fast:
         cmd += ["-c", "copy"]
     else:
-        cmd += utils.vcodec_args(input, vcodec)
-        cmd += utils.acodec_args(input, acodec)
+        cmd += utils.vcodec_args(input, vcodec, vquality)
+        cmd += utils.acodec_args(input, acodec, aquality)
 
     if output is None:
         p = Path(input)

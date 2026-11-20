@@ -1,67 +1,10 @@
+import json
 import subprocess
 from pathlib import Path
 
 import click
 
-# Reference: https://ffmpeg.org/ffmpeg-codecs.html
-VIDEO_ENCODERS = {
-    "h264": "libx264",
-    "hevc": "libx265",
-    "vp8": "libvpx",
-    "vp9": "libvpx-vp9",
-    "av1": "libsvtav1",  # alternatives: libaom-av1, librav1e
-    "mpeg4": "mpeg4",
-    "mpeg2video": "mpeg2video",
-    "mpeg1video": "mpeg1video",
-    "theora": "libtheora",
-    "h263": "h263",
-    "flv1": "flv",
-    "msmpeg4v2": "msmpeg4v2",
-    "msmpeg4v3": "msmpeg4",
-    "wmv1": "wmv1",
-    "wmv2": "wmv2",
-    "mjpeg": "mjpeg",
-    "prores": "prores_ks",
-    "dnxhd": "dnxhd",
-    "ffv1": "ffv1",
-    "huffyuv": "huffyuv",
-    "gif": "gif",
-    "rawvideo": "rawvideo",
-}
-
-AUDIO_ENCODERS = {
-    "aac": "aac",
-    "mp3": "libmp3lame",
-    "mp2": "mp2",
-    "opus": "libopus",
-    "vorbis": "libvorbis",
-    "flac": "flac",
-    "alac": "alac",
-    "ac3": "ac3",
-    "eac3": "eac3",
-    "wmav1": "wmav1",
-    "wmav2": "wmav2",
-    "pcm_s16le": "pcm_s16le",
-    "pcm_s24le": "pcm_s24le",
-}
-
-# References:
-#   - https://trac.ffmpeg.org/wiki/Encode/H.264  (CRF scale, 17-18 "visually lossless")
-#   - https://trac.ffmpeg.org/wiki/Encode/H.265  (x265 default CRF 28 ~ x264 CRF 23)
-
-# CRF is a quality target: lower means better quality and bigger file.
-# The scale is not shared between encoders, so that's why each one gets its own value.
-CRF = {
-    "libx264": "18",  # 17-18 is "visually lossless or nearly so"
-    "libx265": "23",  # x264's 18 shifted by the +5 gap between the defaults (23 -> 28).
-}
-
-ABITRATE = {
-    "aac": "192k",
-    "libmp3lame": "192k",
-    "libopus": "128k",
-    "libvorbis": "192k",
-}
+from fmpg import codec_options
 
 
 def source_codec(filename: str, stream: str) -> str:
@@ -86,65 +29,93 @@ def source_codec(filename: str, stream: str) -> str:
     return result.stdout.strip()
 
 
-def source_video_codec(filename: str) -> str:
-    """Run ffprobe to get a video codec with default of v:0."""
-    return source_codec(filename, "v:0")
+def source_bitrate(filename: str, stream: str) -> int | None:
+    """Bits/s of a stream. Return None if the file doesn't report one."""
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", stream,
+         "-show_entries", "stream=bit_rate:stream_tags", "-of", "json", filename],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    info = (json.loads(out).get("streams") or [{}])[0]
+    candidates = [info.get("bit_rate")]
+    candidates += [v for k, v in info.get("tags", {}).items() if k.upper().startswith("BPS")]
+    return next((int(v) for v in candidates if v and str(v).isdigit()), None)
 
 
-def source_audio_codec(filename: str) -> str:
-    """Run ffprobe to get a video codec with default of a:0."""
-    return source_codec(filename, "a:0")
-
-
-def get_video_encoder(video_codec: str) -> str:
-    """Get video encoder of a video codec. Default is libx264."""
-    return VIDEO_ENCODERS.get(video_codec, "libx264")
+def _quality_flag(opts: dict[str, str], flags: tuple[str, ...]) -> str | None:
+    """Return the flag in opts that controls quality, or None (e.g. lossless)."""
+    return next((flag for flag in flags if flag in opts), None)
 
 
 def get_audio_encoder(audio_codec: str) -> str:
     """Get audio encoder of a audio codec. Default is aac."""
-    return AUDIO_ENCODERS.get(audio_codec, "aac")
+    return codec_options.AUDIO_ENCODERS.get(audio_codec, "aac")
 
 
-def vcodec_args(filename, vcodec) -> list:
+def get_video_encoder(video_codec: str) -> str:
+    """Get video encoder of a video codec. Default is libx264."""
+    return codec_options.VIDEO_ENCODERS.get(video_codec, "libx264")
+
+
+def vcodec_args(
+    filename: str, vcodec: str | None = None, quality: str | None = None
+) -> list[str]:
     """Build ffmpeg video codec arguments.
 
-    Use vcodec if given, otherwise pick an encoder that matches the
-    source video codec of the file. Encoders listed in CRF also get
-    preset "fast" and their CRF value."""
-    video_encoder = vcodec or get_video_encoder(source_video_codec(filename))
-    arg = ["-c:v", video_encoder]
+    No vcodec: the source's codec at the source's bitrate (falls back to the
+    VIDEO_OPTS default if the file doesn't report one).
+    With vcodec: that encoder's VIDEO_OPTS defaults.
+    quality, if given, replaces the encoder's quality value in either case."""
+    if vcodec:
+        encoder = codec_options.VIDEO_ENCODERS.get(vcodec, vcodec)
+    else:
+        encoder = get_video_encoder(source_codec(filename, "v:0"))
 
-    if video_encoder in CRF:
-        arg += ["-preset", "fast", "-crf", CRF[video_encoder]]
+    opts = dict(codec_options.VIDEO_OPTS.get(encoder, {}))
+    flag = _quality_flag(opts, codec_options.VIDEO_QUALITY_FLAGS)
 
-    return arg
+    if quality:
+        if flag is None:
+            raise click.UsageError(f"{encoder} has no quality setting to override.")
+        opts[flag] = quality
+    elif not vcodec and flag in ("-crf", "-q:v") and (bitrate := source_bitrate(filename, "v:0")):
+        del opts[flag]
+        opts["-b:v"] = str(bitrate)
+
+    args = ["-c:v", encoder]
+    for opt, value in opts.items():
+        args += [opt, value]
+    return args
 
 
-def acodec_args(filename: str, acodec: str | None = None) -> list[str]:
+def acodec_args(
+    filename: str, acodec: str | None = None, quality: str | None = None
+) -> list[str]:
     """Build ffmpeg audio codec arguments.
 
-    Stream-copy if acodec is "copy". Otherwise map acodec through
-    AUDIO_ENCODERS (or use it as-is), or pick an encoder that matches the
-    source audio codec of the file. Encoders listed in ABITRATE also get
-    their bitrate.
-
-    Return an empty list if acodec is not given and the source has no
-    audio stream."""
-    if acodec == "copy":
-        return ["-c:a", "copy"]
-
+    No acodec: the source's codec at the source's bitrate (falls back to the
+    AUDIO_OPTS default if the file doesn't report one).
+    With acodec: that encoder's AUDIO_OPTS defaults.
+    quality, if given, replaces the encoder's quality value in either case."""
     if acodec:
-        encoder = AUDIO_ENCODERS.get(acodec, acodec)
+        encoder = codec_options.AUDIO_ENCODERS.get(acodec, acodec)
     else:
-        source = source_audio_codec(filename)
-        if not source:
-            return []  # No audio stream
-        encoder = get_audio_encoder(source)
+        encoder = get_audio_encoder(source_codec(filename, "a:0"))
+
+    opts = dict(codec_options.AUDIO_OPTS.get(encoder, {}))
+    flag = _quality_flag(opts, codec_options.AUDIO_QUALITY_FLAGS)
+
+    if quality:
+        if flag is None:
+            raise click.UsageError(f"{encoder} has no quality setting to override.")
+        opts[flag] = quality
+    elif not acodec and flag and (bitrate := source_bitrate(filename, "a:0")):
+        del opts[flag]               # bitrate replaces VBR quality (-q:a) too
+        opts["-b:a"] = str(bitrate)
 
     args = ["-c:a", encoder]
-    if encoder in ABITRATE:
-        args += ["-b:a", ABITRATE[encoder]]
+    for opt, value in opts.items():
+        args += [opt, value]
     return args
 
 
@@ -168,11 +139,15 @@ def run_cmd(cmd: list[str], output: Path) -> Path:
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        raise click.ClickException(f"{e.cmd[0]} failed with exit code {e.returncode}") from e
+        raise click.ClickException(
+            f"{e.cmd[0]} failed with exit code {e.returncode}"
+        ) from e
 
     after = ctime_ns(output)
     if after is None or (before is not None and after <= before):
-        raise click.ClickException(f"{cmd[0]} exited cleanly but {output} wasn't written.")
+        raise click.ClickException(
+            f"{cmd[0]} exited cleanly but {output} wasn't written."
+        )
     if output.stat().st_size == 0:
         raise click.ClickException(f"{output} is empty.")
 

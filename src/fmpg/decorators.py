@@ -24,7 +24,7 @@ def ffmpeg_command(f):
 
 
 GENERIC_OPTIONS = {
-    "start": (("start", "--from", "-f"), {"required": True, "help": "Start time: SS, MM:SS, or HH:MM:SS."}),
+    "start": (("start", "--from", "-f"), {"help": "Start time: SS, MM:SS, or HH:MM:SS."}),
     "to": (("--to", "-t"), {"help": "End time: SS, MM:SS, or HH:MM:SS."}),
     "duration": (("-d", "--duration"), {"help": "Output duration: SS, MM:SS, or HH:MM:SS."}),
     "input": (
@@ -37,11 +37,19 @@ GENERIC_OPTIONS = {
     ),
     "vcodec": (
         ("--vcodec",),
-        {"help": "Video encoder, e.g. libx264. Default is the input's codec."},
+        {"help": "Video encoder, e.g. libx264 or h264. Default is the input's codec and bitrate."},
+    ),
+    "vquality": (
+        ("--vquality",),
+        {"help": "Video quality in the encoder's own scale, e.g. 18 (CRF) for libx264."},
     ),
     "acodec": (
         ("--acodec",),
-        {"help": "Audio encoder, e.g. aac. Default is the input's codec."},
+        {"help": "Audio encoder, e.g. aac or mp3. Default is the input's codec and bitrate."},
+    ),
+    "aquality": (
+        ("--aquality",),
+        {"help": "Audio quality in the encoder's own scale, e.g. 192k for aac, 2 for libmp3lame."},
     ),
 }
 
